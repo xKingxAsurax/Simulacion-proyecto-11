@@ -541,6 +541,33 @@
   <script>
     lucide.createIcons();
 
+    // Live Server sirve el frontend en :5500; Flask expone la API en :5001.
+    const API_BASE_URL = window.location.port === '5500'
+      ? 'http://127.0.0.1:5001'
+      : '';
+
+    function apiUrl(path) {
+      return `${API_BASE_URL}${path}`;
+    }
+
+    function assetUrl(path) {
+      return path && path.startsWith('/')
+        ? `${API_BASE_URL}${path}`
+        : path;
+    }
+
+    async function readJsonResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const body = await response.text();
+        throw new Error(
+          `El servidor respondió HTTP ${response.status} sin JSON` +
+          (body ? `: ${body.slice(0, 120)}` : '')
+        );
+      }
+      return response.json();
+    }
+
     // Elementos DOM
     const tabSingle = document.getElementById('tabSingle');
     const tabFolder = document.getElementById('tabFolder');
@@ -697,11 +724,11 @@
         formData.append('file', selectedFiles[0]);
 
         try {
-          const response = await fetch('/predict', {
+          const response = await fetch(apiUrl('/predict'), {
             method: 'POST',
             body: formData
           });
-          const data = await response.json();
+          const data = await readJsonResponse(response);
 
           if (response.ok && data.success) {
             batchContainer.classList.add('hidden');
@@ -745,11 +772,11 @@
           btnText.textContent = `Procesando: ${procesados}/${totalArchivos} (${Math.round((procesados/totalArchivos)*100)}%)...`;
 
           try {
-            const response = await fetch('/predict_batch', {
+            const response = await fetch(apiUrl('/predict_batch'), {
               method: 'POST',
               body: formData
             });
-            const data = await response.json();
+            const data = await readJsonResponse(response);
 
             if (data.success && data.resultados) {
               data.resultados.forEach((res) => {
@@ -870,7 +897,7 @@
       }
 
       document.getElementById('resTipoDocumento').textContent = data.tipo_documento;
-      document.getElementById('resPreviewImg').src = data.url_vista || data.url_archivo;
+      document.getElementById('resPreviewImg').src = assetUrl(data.url_vista || data.url_archivo);
       lucide.createIcons();
     }
 
@@ -926,8 +953,8 @@
       modalConfianzaBadge.textContent = `${Number(data.confianza || 100).toFixed(2)}% Confianza`;
 
       // URLs
-      const urlVista = data.url_vista || data.url_archivo || `/uploads/${data.nombre_archivo}`;
-      const urlArchivo = data.url_archivo || `/uploads/${data.nombre_archivo}`;
+      const urlVista = assetUrl(data.url_vista || data.url_archivo || `/uploads/${data.nombre_archivo}`);
+      const urlArchivo = assetUrl(data.url_archivo || `/uploads/${data.nombre_archivo}`);
       modalBtnDescargar.href = urlArchivo;
 
       // Visor de Imagen vs PDF
@@ -939,11 +966,11 @@
       if (esPdf && urlArchivo) {
         modalImgDisplay.classList.add('hidden');
         modalPdfFrame.classList.remove('hidden');
-        modalPdfFrame.src = urlArchivo;
+        modalPdfFrame.src = assetUrl(urlArchivo);
       } else {
         modalPdfFrame.classList.add('hidden');
         modalImgDisplay.classList.remove('hidden');
-        modalImgDisplay.src = urlVista;
+        modalImgDisplay.src = assetUrl(urlVista);
       }
 
       // Softmax en Modal
@@ -1098,8 +1125,8 @@
     // Cargar Estadísticas DOCUMENT AI
     async function cargarStats() {
       try {
-        const res = await fetch('/api/stats');
-        const stats = await res.json();
+        const res = await fetch(apiUrl('/api/stats'));
+        const stats = await readJsonResponse(res);
         
         const elAcierto = document.getElementById('headerAcierto');
         if (elAcierto) elAcierto.textContent = stats.test_accuracy || '100.00%';
@@ -1219,8 +1246,8 @@
       if (!tipo) tipo = filtroActual;
       renderEncabezadosTabla(tipo);
       try {
-        const res = await fetch(`/api/historial?tipo=${tipo}`);
-        const lista = await res.json();
+        const res = await fetch(apiUrl(`/api/historial?tipo=${encodeURIComponent(tipo)}`));
+        const lista = await readJsonResponse(res);
         historialGlobal = lista;
         const tbody = document.getElementById('historialBody');
         tbody.innerHTML = '';
@@ -1236,7 +1263,7 @@
 
           const idDisplay = item.id || item.sub_id || '-';
           const archivoLink = item.url_archivo ? `
-            <a href="${item.url_archivo}" target="_blank" class="text-blue-600 hover:underline flex items-center gap-1 font-medium truncate max-w-[135px]" title="${item.nombre_archivo}">
+            <a href="${assetUrl(item.url_archivo)}" target="_blank" class="text-blue-600 hover:underline flex items-center gap-1 font-medium truncate max-w-[135px]" title="${item.nombre_archivo}">
               <i data-lucide="file" class="w-3.5 h-3.5 shrink-0 text-blue-500"></i>
               <span class="truncate">${item.nombre_archivo}</span>
             </a>` : `<span class="truncate max-w-[135px]">${item.nombre_archivo}</span>`;
@@ -1247,7 +1274,7 @@
                 <i data-lucide="eye" class="w-3.5 h-3.5"></i>
                 <span>Ver</span>
               </button>
-              <a href="${item.url_archivo || '#'}" target="_blank" class="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition flex items-center gap-1" title="Abrir archivo o imagen original">
+              <a href="${assetUrl(item.url_archivo) || '#'}" target="_blank" class="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition flex items-center gap-1" title="Abrir archivo o imagen original">
                 <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                 <span>Abrir</span>
               </a>
@@ -1311,7 +1338,7 @@
 
     btnLimpiarHistorial.addEventListener('click', async () => {
       if (confirm("¿Estás seguro de que deseas limpiar todas las tablas de MySQL (docuai_sistema)?")) {
-        await fetch('/api/limpiar_historial', { method: 'POST' });
+        await fetch(apiUrl('/api/limpiar_historial'), { method: 'POST' });
         cargarStats();
         cargarHistorial();
       }

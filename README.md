@@ -88,9 +88,16 @@ El sistema cuenta con persistencia automática en **MySQL 8** mediante las sigui
 El sistema crea automáticamente la base de datos `docuai_sistema` y todas las tablas al iniciar la aplicación.
 Configuración por defecto en `app.py`:
 - **Host**: `127.0.0.1` (puerto `3306`)
-- **Usuario**: `udianasis`
-- **Contraseña**: `ANTONIO1`
+- **Usuario**: definido mediante `MYSQL_USER` (por defecto: `udianasis`)
+- **Contraseña**: definida mediante `MYSQL_PASSWORD`
 - **Base de Datos**: `docuai_sistema`
+
+En Windows PowerShell, configura las variables antes de iniciar la aplicación:
+
+```powershell
+$env:MYSQL_USER = "tu_usuario"
+$env:MYSQL_PASSWORD = "tu_contraseña"
+```
 
 #### 3. Iniciar el Servidor Web
 

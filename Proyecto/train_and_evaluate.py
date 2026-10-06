@@ -1,6 +1,6 @@
 import os
 import sys
-
+from tensorflow import keras
 # Configurar UTF-8 en salida de consola Windows
 if sys.platform == "win32":
     try:
@@ -13,10 +13,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras import layers, models
 from sklearn.metrics import confusion_matrix, classification_report
 import json
+from pathlib import Path
 
 # Fijar semilla para reproducibilidad
 tf.keras.utils.set_random_seed(42)
@@ -26,7 +26,8 @@ IMG_HEIGHT = 160
 IMG_WIDTH = 160
 BATCH_SIZE = 32
 EPOCHS = 10
-DATASET_DIR = "dataset"
+PROJECT_DIR = Path(__file__).resolve().parent
+DATASET_DIR = PROJECT_DIR / "dataset"
 
 print("=" * 70)
 print(" 1. CARGA DE DATASET DIVIDIDO (TRAIN 70%, VAL 15%, TEST NO VISTOS 15%)")
@@ -35,6 +36,18 @@ print("=" * 70)
 train_dir = os.path.join(DATASET_DIR, "train")
 val_dir = os.path.join(DATASET_DIR, "val")
 test_dir = os.path.join(DATASET_DIR, "test")
+
+missing_dirs = [
+    directory for directory in (train_dir, val_dir, test_dir)
+    if not os.path.isdir(directory)
+]
+if missing_dirs:
+    missing_text = "\n".join(f"  - {directory}" for directory in missing_dirs)
+    raise FileNotFoundError(
+        "No se encontró el dataset dividido. Ejecuta primero "
+        f"{PROJECT_DIR / 'prepare_dataset.py'} o verifica estas carpetas:\n"
+        f"{missing_text}"
+    )
 
 train_ds = keras.utils.image_dataset_from_directory(
     train_dir,
@@ -65,9 +78,9 @@ num_classes = len(class_names)
 print(f"\n[+] Clases detectadas ({num_classes}): {class_names}")
 
 # Guardar classes.json y classes.txt
-with open("classes.json", "w", encoding="utf-8") as f:
+with open(PROJECT_DIR / "classes.json", "w", encoding="utf-8") as f:
     json.dump(class_names, f, indent=2)
-with open("classes.txt", "w", encoding="utf-8") as f:
+with open(PROJECT_DIR / "classes.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(class_names))
 
 AUTOTUNE = tf.data.AUTOTUNE
@@ -132,8 +145,8 @@ history = model.fit(
 )
 
 # Guardar modelos en ambos formatos
-model.save("modelo_documentos.keras")
-model.save("modelo_documentos.h5")
+model.save(PROJECT_DIR / "modelo_documentos.keras")
+model.save(PROJECT_DIR / "modelo_documentos.h5")
 print("\n[+] Modelo guardado en: modelo_documentos.keras y modelo_documentos.h5")
 
 print("\n" + "=" * 70)
@@ -167,6 +180,31 @@ print(classification_report(y_true, y_pred, target_names=class_names, digits=4))
 cm = confusion_matrix(y_true, y_pred)
 print("--- MATRIZ DE CONFUSIÓN EN DATOS NO VISTOS ---")
 print(cm)
+
+print("\n" + "=" * 70)
+print(" 4.5 EVALUACIÓN ADICIONAL SOBRE CONJUNTO TRAIN")
+print("=" * 70)
+
+# Predicción sobre train (datos que el modelo sí vio)
+train_predicciones = model.predict(train_ds)
+y_train_true = np.concatenate([y.numpy() for x, y in train_ds], axis=0)
+y_train_pred = np.argmax(train_predicciones, axis=1)
+
+train_aciertos = np.sum(y_train_true == y_train_pred)
+train_total = len(y_train_true)
+train_accuracy = (train_aciertos / train_total) * 100
+train_error = 100.0 - train_accuracy
+
+print(f"\n[*] Total documentos TRAIN: {train_total}")
+print(f"[*] Aciertos en TRAIN:      {train_aciertos}")
+print(f"[*] Accuracy en TRAIN:      {train_accuracy:.2f}%")
+print(f"[*] Error en TRAIN:         {train_error:.2f}%")
+
+# Estas métricas se incorporan al JSON al finalizar la generación de gráficas.
+history_dict = {
+    "train_accuracy": float(train_accuracy),
+    "train_error": float(train_error)
+}
 
 print("\n" + "=" * 70)
 print(" 5. GENERACIÓN DE GRÁFICAS DE TASAS DE ACIERTO Y ERROR")
@@ -206,7 +244,7 @@ plt.legend(loc='upper right')
 plt.grid(True, linestyle=':', alpha=0.6)
 
 plt.tight_layout()
-plt.savefig("grafica_tasas_acierto_error.png", dpi=300)
+plt.savefig(PROJECT_DIR / "grafica_tasas_acierto_error.png", dpi=300)
 plt.close()
 print("[+] Gráfica guardada: grafica_tasas_acierto_error.png")
 
@@ -221,7 +259,7 @@ plt.ylabel('Loss (Crossentropy)')
 plt.legend()
 plt.grid(True, linestyle=':', alpha=0.6)
 plt.tight_layout()
-plt.savefig("grafica_perdida.png", dpi=300)
+plt.savefig(PROJECT_DIR / "grafica_perdida.png", dpi=300)
 plt.close()
 print("[+] Gráfica guardada: grafica_perdida.png")
 
@@ -231,12 +269,14 @@ history_dict = {
     "val_accuracy": [float(x) for x in history.history['val_accuracy']],
     "loss": [float(x) for x in history.history['loss']],
     "val_loss": [float(x) for x in history.history['val_loss']],
+    "train_accuracy": float(train_accuracy),
+    "train_error": float(train_error),
     "test_accuracy": float(tasa_acierto),
     "test_error": float(tasa_error),
     "confusion_matrix": cm.tolist(),
     "class_names": class_names
 }
-with open("training_metrics.json", "w", encoding="utf-8") as f:
+with open(PROJECT_DIR / "training_metrics.json", "w", encoding="utf-8") as f:
     json.dump(history_dict, f, indent=2)
 
 print("\n¡Entrenamiento y Evaluación Finalizados con Éxito!")

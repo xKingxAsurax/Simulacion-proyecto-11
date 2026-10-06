@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../../../Simulacion"
+		},
+		{
+			"name": "Simulacion-proyecto-11-1",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "Simulacion-proyecto-11-1"
+	}
+}

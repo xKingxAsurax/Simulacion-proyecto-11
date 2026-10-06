@@ -2,15 +2,32 @@ import os
 import shutil
 import random
 import pymupdf
+import zipfile
 from pathlib import Path
 
 # Fijar semilla para reproducibilidad exacta
 random.seed(42)
 
-RAW_DIR = Path("dataset_raw/CompanyDocuments")
-OUTPUT_DIR = Path("dataset")
-CSV_SOURCE = Path("dataset_raw/company-document-text.csv")
-CSV_DEST = Path("dataset_original.csv")
+PROJECT_DIR = Path(__file__).resolve().parent
+RAW_ROOT = PROJECT_DIR / "dataset_raw"
+ZIP_SOURCE = PROJECT_DIR / "dataset.zip"
+RAW_DIR = RAW_ROOT / "CompanyDocuments"
+OUTPUT_DIR = PROJECT_DIR / "dataset"
+CSV_SOURCE = RAW_ROOT / "company-document-text.csv"
+CSV_DEST = PROJECT_DIR / "dataset_original.csv"
+
+# El repositorio distribuye los PDF dentro de dataset.zip. Extraerlos solo
+# cuando todavía no existe el directorio de origen esperado.
+if not RAW_DIR.exists():
+    if not ZIP_SOURCE.exists():
+        raise FileNotFoundError(
+            f"No se encontró el dataset en {ZIP_SOURCE}. "
+            "Coloca dataset.zip en la carpeta Proyecto."
+        )
+    print(f"[+] Extrayendo dataset desde {ZIP_SOURCE}...")
+    with zipfile.ZipFile(ZIP_SOURCE) as archive:
+        archive.extractall(RAW_ROOT)
+    print(f"[+] Dataset extraído en {RAW_ROOT}")
 
 # 1. Copiar CSV original requerido para la entrega
 if CSV_SOURCE.exists():

@@ -3,3 +3,5 @@ tensorflow>=2.15.0
 pymupdf>=1.23.0
 pillow>=10.0.0
 numpy>=1.24.0
+pymysql>=1.1.0
+winocr>=0.0.5

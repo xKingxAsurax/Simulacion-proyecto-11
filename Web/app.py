@@ -31,13 +31,20 @@ app.config['MAX_CONTENT_LENGTH'] = None
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 DB_PATH = 'documentos.db'
 
+@app.after_request
+def add_frontend_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = 'http://127.0.0.1:5500'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
 # =============================================================================
 # 1. CONFIGURACIÓN DE MYSQL (Servidor Local AppServ / MariaDB / MySQL 8)
 # =============================================================================
 MYSQL_HOST = os.environ.get('MYSQL_HOST', 'localhost')
 MYSQL_PORT = int(os.environ.get('MYSQL_PORT', 3306))
 MYSQL_USER = os.environ.get('MYSQL_USER', 'udianasis')
-MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', 'ANTONIO1')
+MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', '')
 MYSQL_DB = os.environ.get('MYSQL_DB', 'docuai_sistema')
 
 def get_mysql_connection():
@@ -669,24 +676,28 @@ def validar_documento(guardado_path, nombre_archivo):
     name_low = nombre_archivo.lower()
     txt = extraer_texto_crudo(guardado_path).lower()
 
-    # 1. Filtro estricto de términos no empresariales (carnets, deportes, diplomas, etc.)
-    if any(nb in txt or nb in name_low for nb in NON_BUSINESS):
-        return False
+    # 1. Detectar primero anclajes empresariales. Las capturas de pantalla
+    # pueden incluir etiquetas de la interfaz como "modelo CNN" o "accuracy".
+    tiene_patron_fuerte = any(re.search(pat, txt) for pat in PATRONES_FUERTES)
 
     # 2. Si el texto contiene múltiples nombres de clases simultáneamente, es un gráfico/matriz
     clases_detectadas = sum(1 for c in [r'\binventory\s*report\b', r'\bpurchase\s*orders?\b', r'\bshipping\s*orders?\b', r'\binvoices?\b'] if re.search(c, txt))
-    if clases_detectadas >= 2:
+    if clases_detectadas >= 2 and not tiene_patron_fuerte:
         return False
 
-    # 3. Comprobar si hay al menos un patrón fuerte
-    if any(re.search(pat, txt) for pat in PATRONES_FUERTES):
+    # 3. Un anclaje fuerte prevalece sobre texto adicional de la interfaz.
+    if tiene_patron_fuerte:
         return True
 
-    # 4. Comprobar combinación de al menos 3 patrones secundarios
+    # 4. Filtro de términos no empresariales cuando no hay un anclaje fuerte.
+    if any(nb in txt or nb in name_low for nb in NON_BUSINESS):
+        return False
+
+    # 5. Comprobar combinación de al menos 3 patrones secundarios
     if sum(1 for pat in PATRONES_SECUNDARIOS if re.search(pat, txt)) >= 3:
         return True
 
-    # 5. Verificación de nombre de archivo empresarial legítimo
+    # 6. Verificación de nombre de archivo empresarial legítimo
     EMPRESARIAL_STEMS = [r'\binvoice', r'\border', r'\bpurchase', r'\bstockreport', r'\bstock_report', r'\bfactura', r'\bdespacho', r'\bremision']
     if any(re.search(pat, name_low) for pat in EMPRESARIAL_STEMS):
         return True
@@ -1239,6 +1250,7 @@ def limpiar_historial():
     return jsonify({'success': True, 'mensaje': 'Historial reiniciado correctamente en MySQL y SQLite'})
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5002))
     print("Iniciando servidor web del sistema de clasificación y extracción...")
-    print("Accede a: http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print(f"Accede a: http://localhost:{port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
